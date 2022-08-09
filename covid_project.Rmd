@@ -1,0 +1,646 @@
+---
+title: "The Effects of COVID-19 on Countries Across the World"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+library(lubridate)
+
+source("scripts/viridis.R")
+source("scripts/ggprob.R")
+
+data <- read_csv("owid-covid-data.csv") %>%
+  select(iso_code, continent, location, date, total_cases, new_cases, total_deaths, new_deaths, positive_rate, total_vaccinations, people_vaccinated, people_fully_vaccinated, new_vaccinations, population, population_density, gdp_per_capita)
+```
+
+#### Bryan Li, Abby Vanooyen, Stephen Zhao
+
+## Introduction
+
+With the pandemic affecting how each and everyone of us lives our lives today, a study of COVID-19 data would be an interesting topic to investigate. However, hearing so much and having a familiar understanding of how the U.S. has been affected, we broadened our analysis to see how countries around the world have been affected.
+
+This study focuses on three main components of the pandemic: positive cases, deaths, and vaccines. Each of these components will be compared to on a per capita basis to demonstrate how population density may effect a country's positive cases and how GDP per capita effects a country's deaths and the amount of vaccines received and distributed.  
+
+We expect countries with a higher population density to have a higher positive case count, as the virus is able to spread more easily and rapidly. Countries that fall in a higher GDP per capita bracket are expected to have a higher death count and thus would receive and distribute a larger number of vaccines in order to prevent future deaths.
+
+
+## Background
+
+*Our World In Data* has formed a team to update the official numbers of the pandemic from countries around the world each morning. They are able to do so by retrieving data from a country's respective government or Ministry of Health. Information about *Our World In Data* and further analyses can be found at their website, https://ourworldindata.org/covid-vaccinations. More specifically, the data set used can be found at their GitHub repository, https://github.com/owid/covid-19-data/tree/master/public/data.
+
+
+There are about 80,000 observations and 60 variables used. But many of these variables were not needed in our study. We focus primarily on about 15, many of which are self explanatory. They are the following:
+
+- iso_code: A three letter country code
+- continent: The continent a country is located in
+- location: Country name
+- date: The date the data was recorded
+- total_cases: A cumulative sum of total positive cases on a date
+- new_cases: New confirmed cases on a date
+- total_deaths: A cumulative sum of total deaths on a date
+- new_deaths: New deaths on a date
+- total_vaccinations: A cumulative sum of total vaccinations distributed on a date
+- new_vaccinations: New vaccinations distributed on a date
+- population: Population of a country
+- population_density: Number of people divided by land area, measured in square kilometers
+- gdp_per_capita: Gross domestic product at purchasing power parity
+
+
+With this data set, there are some things to be considered. Our team downloaded the data having the most full date of data on 4/3/2021. There are more updated versions, but we will stick with this one to remain consistent. Additionally, there are many missing values in the data set earlier on in the time frame of the pandemic as many countries may not have been affected yet, or did not understand the full problem that was about to come. We chose to focus on the more recent time, as we are approaching closer to the end of the pandemic. Finally, while looking at the vaccines, it is important to note there are many other vaccines being used around the world. In the U.S., we are most familiar with three (Moderna, Pfizer-BioNTech, and Johnson & Johnson/Janssen) while there are others such as Sputnik V, Sinopharm-Beijing, and more. 
+
+
+For the rest of the report, we look to answer our questions in comparing countries around the world based on the three main components our team chose to focus on. We begin with positive cases, then deaths, and finally vaccinations.
+
+## Analysis
+
+
+#### **Positive Cases**
+
+The first graph seen below is a bar graph that shows the total populations by continent in order from lowest to highest population. When looking at the total number of cases, it is essential to compare the number of cases to the total population to  better represent which continents have the most cases relative to population. The second graph below shows real cases by month for the various continents. 
+
+```{r, echo=FALSE, message=FALSE}
+positive_cases_by_month<-data %>%
+  select(date, total_cases, continent) %>%
+  mutate("year" = year(date)) %>%
+  mutate("month" = month(date, label=TRUE)) %>%
+  filter(year== 2021 & month != "Apr")%>%
+  group_by(continent, month) %>%
+  drop_na()%>%
+  summarise(cases=sum(total_cases, na.rm = TRUE))
+
+continent_populations<-data %>%
+  select(date, population, continent) %>%
+  mutate("year" = year(date)) %>%
+  mutate("month" = month(date, label=TRUE)) %>%
+  filter(year== 2021 & month == "Apr" & day(date)== 3)%>%
+  group_by(continent, month) %>%
+  drop_na()%>%
+  summarise(total_population= sum(population, na.rm = TRUE))
+
+ggplot(continent_populations, aes(x= reorder(continent, total_population),  y=total_population, fill = continent)) +
+  geom_col()+
+  xlab("Continent") +
+  ylab("Total Population") +
+  ggtitle("Distribution of Total Population by Continent as of March 31, 2021") +
+  guides(fill=guide_legend(title="Continent"))
+
+ggplot(positive_cases_by_month,aes(x=month, y= cases, fill = continent)) +
+  geom_col(position = "dodge2") +
+  xlab("Months (2021)") +
+  ylab("Total Positive Cases") +
+  ggtitle(" Distribution of Total Cases per Month by Continent in 2021") +
+  guides(fill=guide_legend(title="Continent"))
+
+```
+
+One notable observation is that Europe consistently has a greater amount of cases compared to the other continents. This is important to note because when Europe's total population is compared to other countries, it ranks third in total population, as seen in the first graph. Likewise, Asia has the largest population but ranks third in total cases. As a general trend among all continents, there was a spike in cases from February to March. While it is difficult to see, Oceania has a significantly lower number of cases causing the bar to appear to be zero.
+
+
+For the following analyses, the total cases are represented on a per capita basis which means that the graphs show the number of total cases relative to population size.
+
+```{r, echo=FALSE, message=FALSE}
+top_countries<-data %>%
+  select(population, location) %>%
+  arrange(desc(population))%>%
+  drop_na()%>%
+  unique() %>%
+  filter(location != "World" & location != "Asia"& location != "Africa" & location != "North America"& location != "Europe" & location != "European Union" & location != "South America") %>%
+  summarise(location, population) %>%
+  head(10) # top 10 populated countries
+
+top_countries_postive_cases<-inner_join(top_countries, data) %>%
+  select(date, total_cases, population, location) %>%
+  mutate("year" = year(date)) %>%
+  mutate("month" = month(date, label=TRUE)) %>%
+  filter(year=="2021" )%>%
+  group_by(location)%>%
+  summarise(date, population, total_cases, total_cases_per_capita= (total_cases/population)) 
+#top_countries_postive_cases
+
+ggplot(top_countries_postive_cases, aes(x=date, y=total_cases_per_capita, color= location)) +
+  geom_line(size=1.25)+
+  xlab("Month (2021)") +
+  ylab("Total Positive Cases per Capita") +
+  guides(color=guide_legend(title="Country")) +
+  ggtitle("Total Cases per Capita in Top 10 Populated Countries Through April") +
+  scale_color_manual(values = c("red","blue", "green", "orange", "magenta", "purple", "black","cyan", "pink", "light blue"))
+```
+
+This graph shows the increase of total cases throughout 2021 for the ten most populated countries in the world. It is seen that since January, the United States has the most total cases, along with Brazil also having a significant amount of cases since January. One interesting point to note is that China has the least amount of cases amongst the top 10 populated countries. One possible explanation for this was the limited data reported by China in regards to their COVID-19 cases.
+
+
+```{r, echo=FALSE, message=FALSE}
+population_density_data<-data %>%
+  select(population_density, location) %>%
+  arrange(desc(population_density))%>%
+  drop_na()%>%
+  unique() %>%
+  filter(location != "World" & location != "Asia"& location != "Africa" & location != "North America"& location != "Europe" & location != "European Union" & location != "South America") %>%
+  summarise(location, population_density) # compilation of all countries population density
+```
+
+```{r, echo=FALSE, message=FALSE}
+denser_pop_cases<-inner_join(population_density_data, data) %>%
+  select(date, total_cases, population_density, location, population) %>%
+  mutate("year" = year(date)) %>%
+  mutate("day" = day(date)) %>%
+  mutate("month" = month(date, label=TRUE)) %>%
+  drop_na() %>%
+  filter(year=="2021" & month== "Apr" & day==3) %>%
+  summarise(location, date, population_density, total_cases, cases_per_capita= (total_cases/population) ) 
+#denser_pop_cases #compilation of all countries population density and total cases as of April 3
+
+top_5_cases<-denser_pop_cases %>%
+  head(5)
+bottom_5_cases<-denser_pop_cases %>%
+  tail(5)
+top_v_bottom_5_cases<- full_join(top_5_cases, bottom_5_cases)%>%
+  mutate("pop_density" = case_when(population_density<5 ~ "Bottom Five Densely Populated", population_density>5 ~ "Top Five Densely Populated"))
+#top_v_bottom_5_cases #compilation of top 5 and bottom 5 densely populated countries and total cases as of April 3
+
+sum_cases<- top_v_bottom_5_cases %>%
+  group_by(pop_density) %>%
+  summarise(cases_per_capita=sum(cases_per_capita))
+
+ggplot(sum_cases, aes(x=pop_density, y=cases_per_capita, fill= pop_density))+
+  geom_col()+
+  ylab("Total Cases Per Capita") +
+  xlab("Population Density") +
+  ggtitle("Cases per Capita of the Top 5 and Lowest 5 Densely Populated Countries") +
+  guides(fill=guide_legend(title="Population Density"))
+ 
+```
+
+The graph above shows that the top five densely populated countries have significantly more total cases per capita than the bottom five densely populated countries. This is likely due to the close living proximity in the densely populated countries.
+
+
+
+```{r, echo=FALSE, message=FALSE}
+denser_pop_vaccinations<-inner_join(population_density_data, data) %>%
+  select(date, total_vaccinations, population_density, location, population ) %>%
+  mutate("year" = year(date)) %>%
+  mutate("day" = day(date)) %>%
+  mutate("month" = month(date, label=TRUE)) %>%
+  filter(year=="2021" & month== "Apr" & day==3) %>%
+  summarise(location, date, population_density, total_vaccinations, vaccinations_per_capita= (total_vaccinations/population)) 
+#denser_pop_vaccinations #compilation of all countries population density and total vaccinations as of April 3
+
+top_5_vac<-denser_pop_vaccinations %>%
+  head(5)
+bottom_5_vac<-denser_pop_vaccinations %>%
+  tail(5)
+top_v_bottom_5_vac<- full_join(top_5_vac, bottom_5_vac) %>%
+   mutate("pop_density" = case_when(population_density<5 ~ "Bottom Five Densely Populated", population_density>5 ~ "Top Five Densely Populated"))
+#top_v_bottom_5_vac #compilation of top 5 and bottom 5 densely populated countries and total vaccinations as of April 3
+
+sum_vac<- top_v_bottom_5_vac %>%
+  group_by(pop_density) %>%
+  drop_na()%>%
+  summarise(vaccinations_per_capita=sum(vaccinations_per_capita))
+
+
+ggplot(sum_vac, aes(x=pop_density, y=vaccinations_per_capita, fill= pop_density))+
+  geom_col()+
+  xlab("Population Density")+
+  ylab("Total Vaccinations Per Capita") +
+  ggtitle("Vaccinations Per Capita of the Top 5 and Lowest 5 Densely Populated Countries") +
+  guides(fill=guide_legend(title="Population Density"))
+```
+
+The graph above shows that the top five densely populated countries have significantly more total vaccination per capita than the bottom five densely populated countries. This is likely a result of the high number of cases for the more densely populated countries (as seen in the other bar graph above). Additionally, it is important to note that one of the top five densely populated countries (Monaco) and one of the bottom five densely populated countries (Namibia) are both missing vaccination data in the date set, so their data was removed for this comparison.
+
+#### **Deaths**
+
+```{r, include=FALSE}
+gdp_data <- data %>%
+  filter(date == ymd("2021-04-03") & location != "World" & !is.na(continent)) %>%
+  select(gdp_per_capita) %>%
+  drop_na() %>%
+  pull()
+
+gdp_data <- sort(gdp_data)
+
+.33 * length(gdp_data)
+.66 * length(gdp_data)
+
+gdp_data[61]
+gdp_data[122]
+
+bracket <- data %>%
+  filter(location != "World" & !is.na(continent)) %>%
+  mutate(bracket = case_when(
+    gdp_per_capita <= 6222.554 ~ "low",
+    gdp_per_capita >= 18933.91 ~ "high",
+    gdp_per_capita > 6222.554 & gdp_per_capita < 18933.91 ~ "middle"
+  ))
+```
+
+Deaths per capita (y-axis) is represented by dividing the total deaths (as of 2021-04-03) by the total population of that country. This results in a more accurate representation of how many deaths there were.
+
+```{r, echo=FALSE, message=FALSE}
+bracket %>%
+  filter(date == ymd("2021-04-03")) %>%
+  select(gdp_per_capita, total_deaths, population) %>%
+  drop_na() %>%
+  ggplot(aes(gdp_per_capita, total_deaths/population)) +
+  geom_point(aes(color=gdp_per_capita)) +
+  geom_smooth(method="lm",se=FALSE) +
+  xlab("GDP Per Capita") +
+  ylab("Deaths Per Capita") +
+  ggtitle("Deaths Per Capita Seperated by GDP")
+```
+
+The total deaths for the COVID-19 pandemic are displayed in the above graph. The GDP per capita is displayed on the x-axis, with a color legend showing the change in GDP. The y-axis displays the total deaths to the date (04/03/2021) divided by the population in that country. This graph shows that the majority of countries that suffer from high deaths from COVID-19 are between 15,000 and 45,000 GDP per capita. There are a few outliers in the graph but the seen majority of high deaths rates exist within the blue section of the graph. For the lower GDP countries, it seems that as the country's GDP starts to grow, the total deaths grows along with it.  
+  
+The two following plots show the distribution of COVID-19 deaths in the month of March, 2021. The first plot shows the total deaths while the second plot shows the total deaths per capita (deaths in March 2021 divided by population). 
+
+```{r, echo=FALSE}
+levels <- c("low","middle","high")
+
+bracket %>%
+  mutate(year = year(date), month = month(date)) %>%
+  filter(year == 2021 & month == 3) %>%
+  select(bracket, population, new_deaths) %>%
+  drop_na() %>%
+  group_by(bracket) %>%
+  summarize(sum = sum(new_deaths)) %>%
+  ggplot(aes(bracket, sum, fill=bracket)) +
+  geom_col() +
+  xlab("GDP Percentile") +
+  ylab("Total Deaths in the Month of March 2021") +
+  ggtitle("Distribution of COVID Deaths in March 2021") +
+  scale_x_discrete(limits=levels)
+
+bracket %>%
+  mutate(year = year(date), month = month(date)) %>%
+  filter(year == 2021 & month == 3) %>%
+  select(bracket, population, new_deaths) %>%
+  drop_na() %>%
+  mutate(new_deaths = new_deaths/population) %>%
+  group_by(bracket) %>%
+  summarize(sum = sum(new_deaths)) %>%
+  ggplot(aes(bracket, sum, fill=bracket)) +
+  geom_col() +
+  xlab("GDP Percentile") +
+  ylab("Total Deaths per Capita (March 2021)") +
+  ggtitle("Distribution of COVID-19 Deaths in March 2021") +
+  scale_x_discrete(limits=levels) +
+  guides(fill=guide_legend(title="GDP Bracket"))
+```
+
+The majority of COVID-19 deaths are in the middle and higher brackets. The three brackets are sorted by GDP per capita, where the first bracket, low, consists of countries in the bottom 33% GDP per capita of the countries in the dataset, the second bracket, middle, between the bottom 33% and the top 33%, and the third bracket, high, consisting of countries in the top 33%. 
+
+The visual shows that the distribution of COVID-19 deaths in March 2021 for the middle and high brackets are almost equivalent. This is likely caused by the fact that countries with a higher GDP typically have a higher population, resulting in an increased number of deaths and thus an increased number of people affected by the pandemic. Due to the way a virus works, increasing the number of people in a population should exponentially increase the number of people affected by and thus dying from the disease, as we can see in the two plots.
+
+```{r, echo=FALSE}
+quantitative_rep <- bracket %>%
+  filter(date == ymd("2021-04-03")) %>%
+  select(total_deaths, bracket, population) %>%
+  drop_na() %>%
+  group_by(bracket) %>%
+  summarize(mean_total_deaths = mean(total_deaths),
+            mean_total_deaths_by_population = mean(total_deaths/population) * 10^5) %>%
+  arrange(mean_total_deaths)
+```
+
+After multiplying by $10^5$, to up scale observations, the mean death per capita due to COVID-19 drastically increases as the bracket changes from low to high. The low bracket, which had a mean of 8.4 and the high bracket, which had a mean of 82.9, have considerably different means. As the GDP per capita increases, the number of deaths in that country also increases. When taking population into account as well, we see that the total number of deaths still increases.
+
+```{r, echo=FALSE, message=FALSE}
+bracket %>%
+  filter(date == ymd("2021-04-03")) %>%
+  arrange(desc(population)) %>%
+  select(date,location,total_deaths,new_deaths,gdp_per_capita) %>%
+  head(10) %>%
+  arrange(desc(gdp_per_capita)) %>%
+  ggplot(aes(gdp_per_capita,total_deaths,color=location)) +
+  geom_point(size=3)  +
+  ylim(0,555000) +
+  xlab("GDP Per Capita") +
+  ylab("Total Deaths") +
+  ggtitle("Total Deaths by Top Ten Populated Countries") +
+  scale_y_log10() +
+  guides(color=guide_legend(title="Country"))
+```
+
+The above visual shows the top ten populated countries in the world. The United States, being the highest in GDP/capita, shows the highest in the number of total deaths. Also, it is shown that as GDP per capita increases, the number of total deaths also increase.
+
+```{r, echo=FALSE}
+avg <- bracket %>%
+  filter(date == ymd("2021-04-03")) %>%
+  select(total_deaths, population,bracket,gdp_per_capita) %>%
+  drop_na()
+
+bracket2 <- avg %>%
+  summarize(bracket = bracket, gdp_per_capita = gdp_per_capita, deaths_capita = total_deaths/population)
+
+avg_high <- avg %>%
+  filter(bracket == "high")
+avg_high <- mean(avg_high$total_deaths/avg_high$population)
+
+avg_low <- avg %>%
+  filter(bracket == "low")
+avg_low <- mean(avg_low$total_deaths/avg_low$population)
+```
+
+Next, we will compute a hypothesis test. Let $B_h$ be the deaths per capita for countries in the high bracket and $B_l$ be the deaths by capita for countries in the low bracket.
+
+Following the null and alternative hypothesis below.  
+$$
+H_0 : B_h = B_l \\
+H_A : B_h \neq B_l
+$$
+
+To complete this hypothesis test, we create linear models for $B_h$ and $B_l$. Then, by calculating the test statistic using the difference, we are able to calculate the p-value.
+
+```{r, echo=FALSE}
+low <- lm(deaths_capita ~ gdp_per_capita, bracket2 %>%
+     filter(bracket == "low"))
+high <- lm(deaths_capita ~ gdp_per_capita, bracket2 %>%
+     filter(bracket == "high"))
+
+extract_lm <- function(x)
+{
+  out <- as_tibble(coef(summary(x)), rownames = "parameter") %>% 
+    rename(estimate = Estimate,
+           se = `Std. Error`,
+           t = `t value`,
+           p_value = `Pr(>|t|)`) %>%
+    select(parameter,estimate,se) %>%
+    mutate(df = df.residual(x))
+
+  return ( out )
+}
+
+lm1 <- extract_lm(low)
+lm2 <- extract_lm(high)
+
+table <- tibble(subset = "LOW", estimate_intercept = lm1$estimate[1],
+       se_intercept = lm1$se[1],
+       estimate_slope = lm1$estimate[2],
+       se_slope = lm1$se[2],
+       df = lm1$df[1])
+table <- table %>%
+  add_row(subset = "HIGH", estimate_intercept = lm2$estimate[1],
+       se_intercept = lm2$se[1],
+       estimate_slope = lm2$estimate[2],
+       se_slope = lm2$se[2],
+       df = lm2$df[1])
+test_stat <- table %>%
+  select(estimate_slope, se_slope) %>%
+  summarize(
+    se = sqrt(sum(se_slope^2)),
+    est = estimate_slope[1] - estimate_slope[2],
+    tstat = est/se
+  )
+
+df_pval <- table %>%
+  summarize(df = sum(df)) %>%
+  pull(df)
+
+pval <- test_stat %>%
+  mutate(df = df_pval,
+         p_value = 2*pt(-abs(tstat), df_pval))
+
+gt(df_pval) +
+  geom_t_fill(df_pval, b=-abs(pval$tstat)) +
+  geom_t_fill(df_pval, a=abs(pval$tstat))
+```
+
+The p-value is calculated to be approximately 0.0047, meaning that the test is statistically significant. This is important because it proves that there is a difference in deaths per capita as the GDP per capita changes, verifying what we were able to see in the graphs previous bar graphs of total deaths per capita and the GDP bracket.
+
+#### **Vaccinations**
+
+```{r, include=FALSE, warning=FALSE, message=FALSE}
+
+# The list of continent, there is no data for Antarctica 
+continent_list <-data %>%
+  select(continent) %>%
+  distinct() %>%
+  drop_na()
+
+# Data contained for the whole world, provided by data set
+world <- data %>%
+  filter(location == "World")
+
+vaccinations <- data %>%
+  select(location, continent, population, gdp_per_capita, date, total_vaccinations, 
+         new_vaccinations, people_vaccinated, people_fully_vaccinated) %>%
+  filter(!is.na(continent)) %>%
+  filter(year(date) == "2021" & month(date) == "3")
+
+data %>%
+  filter(location == "United States" & month(date) == 3 & year(date) == 2021) %>%
+  summarize(location, date, total_vaccinations)
+
+
+vaccinations %>%
+  group_by(location) %>%
+  summarize(total_vaccinations = max(total_vaccinations, na.rm = TRUE), population, per_capita = total_vaccinations / population) %>%
+  distinct() %>%
+  arrange(desc(per_capita))
+
+# Total number of people vaccinated and fully vaccinated
+vaccinations %>%
+  group_by(location) %>%
+  drop_na() %>%
+  summarize(vaccinated = max(people_vaccinated), fully_vaccinated = max(people_fully_vaccinated)) %>%
+  arrange(desc(vaccinated))
+
+```
+
+```{r, include = FALSE}
+
+## Testing which recent days of the dataset contain the most useful information about total vaccinations. There seems to be discrepancies in the data in that some days have less total vaccinations than the day before, which doesn't make sense in terms of how the variable is set up in the data frame as a cumulative sum. March 31st seemed to be about the most accurate, of the recent days chosen. 
+
+df29 <- bracket %>%
+  filter(month(date) == 3 & day(date) == 29 & year(date) == 2021) %>%
+  group_by(bracket) %>%
+  summarize(total = sum(total_vaccinations, na.rm = TRUE))%>%
+  drop_na()
+  #summarize(total_vaccinations = mean(total_vaccinations))
+df29
+
+df30 <- bracket %>%
+  filter(month(date) == 3 & day(date) == 30 & year(date) == 2021) %>%
+  group_by(bracket) %>%
+  summarize(total = sum(total_vaccinations, na.rm = TRUE))%>%
+  drop_na()
+  #summarize(total_vaccinations = mean(total_vaccinations))
+#df30
+
+df31anova <- bracket %>%
+  filter(month(date) == 3 & day(date) == 31 & year(date) == 2021) %>%
+  filter(!is.na(total_vaccinations))
+
+df31 <- bracket %>%
+  filter(month(date) == 3 & day(date) == 31 & year(date) == 2021) %>%
+  group_by(bracket) %>%
+  summarize(total = sum(total_vaccinations, na.rm = TRUE)) %>%
+  drop_na()
+  #summarize(total_vaccinations = mean(total_vaccinations))
+df31
+
+df1 <- bracket %>%
+  filter(month(date) == 4 & day(date) == 1 & year(date) == 2021) %>%
+  group_by(bracket) %>%
+  summarize(total = sum(total_vaccinations, na.rm = TRUE))%>%
+  drop_na()
+  #summarize(total_vaccinations = mean(total_vaccinations))
+#df1
+
+df2 <- bracket %>%
+  filter(month(date) == 4 & day(date) == 2 & year(date) == 2021) %>%
+  group_by(bracket) %>%
+  summarize(total = sum(total_vaccinations, na.rm = TRUE))%>%
+  drop_na()
+  #summarize(total_vaccinations = mean(total_vaccinations))
+#df2
+
+df3 <- bracket %>%
+  filter(month(date) == 4 & day(date) == 3 & year(date) == 2021) %>%
+  group_by(bracket) %>%
+  summarize(total = sum(total_vaccinations, na.rm = TRUE))%>%
+  drop_na()
+  #summarize(total_vaccinations = mean(total_vaccinations))
+#df3
+
+tvax_mar31 <- df31
+```
+
+As a general representation, this is how each continent is doing in distributing the various COVID-19 vaccines.
+
+
+```{r, echo=FALSE, warning=FALSE, message=FALSE}
+
+# Data contained for the entire continent (excluding Antarctica), provided by data set
+continent_data <- data %>%
+  filter(is.na(continent) & location != "World") %>%
+  filter(location != "European Union" & location != "International") %>%
+  filter(!is.na(total_vaccinations))
+
+ggplot(continent_data, aes(x = date, y = total_vaccinations, color = location)) +
+  geom_line(size = 1.25) +
+  scale_color_manual(values = c("red", "blue", "green", "orange", "purple", "yellow")) +
+  ggtitle("Total Vaccinations by Continent Over Time") +
+  xlab("Months (2020 and 2021)") +
+  ylab("Total Vaccinations Doses Administered") +
+  guides(color=guide_legend(title="Country"))
+
+```
+
+The first vaccines were approved and began to be distributed early to late December of 2020. With different vaccines being approved, and the manufacturing improving over time, we can expect and see a general increase in total vaccinations distributed for all continents. Asia has received the most, followed by North America, and Europe. 
+
+There seemed to be discrepancies within the data, as the total vaccinations according to the date is a cumulative sum, in other words, a later date should always have a larger number of total vaccinations distributed. However, this is not always the case. A possible reason for this could be due partly to the large number of sources *Our World In Data* needs to reach out to on a day to day basis to update the data set. After doing some comparison with dates at the end of March 2021 and dates up to April 3rd 2021, March 31st 2021 had the most accurate depictions of total vaccinations based on the three GDP brackets as described in the death anylsis section. 
+
+```{r, echo = FALSE, message=FALSE}
+vax_per_capita <- vaccinations %>%
+  filter(date == ymd("2021-03-31")) %>%
+  select(location, gdp_per_capita, total_vaccinations, population) %>%
+  drop_na()
+
+  ggplot(vax_per_capita, aes(gdp_per_capita, total_vaccinations/population)) +
+  geom_point(aes(color=gdp_per_capita), size = 3, alpha = .75) +
+  geom_smooth(method="lm",se=FALSE) +
+  xlab("GDP Per Capita") +
+  ylab("Total Vaccinations Distriubted Per Capita") +
+  ggtitle("Total Vaccinations Distributed Per Capita Seperated by GDP (March 31st, 2021)")
+  
+outlier <- vax_per_capita %>%
+    filter(total_vaccinations / population > 1)
+
+```
+
+To more accurately compare a country's total vaccination count to another, we calculate the total vaccinations per capita, that is the total vaccinations distributed within a country, as of March 31st, divided by the country's population. Interpreting the graph, it shows countries with a higher GDP per capita will tend to have have a higher total vaccination per capita. This is reasonable, as more wealthy and powerful countries are able to obtain vaccines more easily due to their status in the world compared to poorer countries. 
+
+The outlier point with a total vaccination per capita above 1 is Israel. Israel has been the top country at distributing vaccines based on their population. According to *Our World In Data*, as of April 24th, about 62% of Israel's population has received at least one dose of the vaccine. The reason as to why the total vaccination per capita is greater than 1, or meaning there have been more vaccines distributed than the country's population, is due to two dose vaccines.
+
+Next, we compare the total vaccines based on the GDP bracket as described in the Deaths section.
+
+```{r, echo = FALSE}
+ggplot(tvax_mar31, aes(fct_reorder(bracket, total), total, fill = bracket)) +
+  geom_col() +
+  xlab("GDP Percentile") +
+  ylab(" Total Vaccine Distribution") +
+  ggtitle("Total Vaccinations Distributed per Capita by March 31st, 2021")
+
+```
+
+
+There is a significant difference in the total vaccinations distributed of countries ranked with a low GDP per capita versus those with a medium to high GDP per capita. Countries ranked in the low GDP bracket had only 7,811,299 total vaccines distributed compared to 245,001,776 and 331,739,932 for countries ranked with middle and high GDP bracket respectively. 
+
+We run a proportion test to statistically verify the results in the graph. The null hypothesis states, the total vaccinations for each of the GDP brackets are equal. To show this, we test the following 
+
+$$
+H_0 :p_{\text{low}} = p_{\text{middle}} = p_{\text{high}} \\
+H_A : p_{\text{low}} \neq p_{\text{middle}} \neq p_{\text{high}}
+$$
+
+where each $p_x$ represents the proportion of the total vaccinations of the respective GDP bracket divided by the sum of the total vaccinations of that bracket and the bracket above. First, we test $p_{\text{low}} = p_{\text{medium}}$. Because they are equal, $p_{\text{low}} = 0.5$. To find the probability, we run a proportion test on the total vaccinations of the low bracket divided by the sum of the total vaccinations of the low and medium brackets. Similarly, the same thing is done when comparing the medium and high brackets. 
+
+```{r, include=FALSE}
+
+tvax_mar31
+
+prop.test(tvax_mar31$total[1], tvax_mar31$total[1] + tvax_mar31$total[2]) # compare low and medium
+prop.test(tvax_mar31$total[2], tvax_mar31$total[2] + tvax_mar31$total[3]) # compare medium and high
+
+```
+
+
+As a result from the tests, there is a p-value of $2.2 * 10 ^{-16}$, from both comparing the low and medium GDP brackets and comparing the medium and high GDP brackets. Meaning the p-value is highly statistically significant to reject the null hypothesis, and the data is more consistent with the alternative hypothesis. That is, the total vaccinations of the three brackets are not equal. This verifies what is seen in the bar graph above. 
+
+
+Finally, we display the distribution of vaccines on a daily, in 2021, for the three GDP brackets.
+
+```{r, echo = FALSE, message=FALSE}
+
+# Countries that have no GDP available.
+missing_gdp <- bracket %>%
+  filter(is.na(bracket)) %>%
+  select(location) %>%
+  distinct(location)
+
+vac_by_day <- bracket %>%
+  filter(year(date) == 2021) %>%
+  group_by(bracket, date) %>%
+  summarize(vaccinations = sum(new_vaccinations, na.rm = TRUE)) %>%
+  drop_na()
+
+# The intersection point at which the middle bracket surpasses the higher bracket is March 22nd
+intersection <- vac_by_day %>%
+  filter(month(date) == 3 & day(date) == 22)
+
+# The reasoning for the dips along the graph is because they fall on weekends.
+dip <- vac_by_day %>%
+  mutate(day = wday(date, label = TRUE))
+
+ggplot(vac_by_day, aes(date, vaccinations, color = bracket)) +
+  geom_line(size = 1.25) +
+  xlab("New Vaccination by the Day") +
+  ylab("Days in 2021") +
+  ggtitle("New Vaccinations per a day in 2021 by GDP bracket")
+  #scale_y_continuous(trans = "log10")
+
+```
+
+
+Up until March 22nd 2021, high ranked GDP per capita countries have received more vaccines on a daily basis. For the remainder of March, middle ranked countries received more than higher ranked. A possible explanation to the various dips in daily vaccines is because those days fall on weekends. It appears that weekends, more specifically Sundays, tend to have lower distribution of vaccines. This is likely due a shortage of staff working during the weekends at testing centers, resulting in less people to transport and distribute the vaccine to the community.
+
+
+
+## Discussion
+
+
+From our analysis, we have demonstrated that there is a correlation between population density and positive cases. For the more densely populated countries, there are higher total cases per capita than those with a lower population. This is likely due to people living in a closer proximity, leading the virus to spread more easily. 
+
+When analyzing deaths, countries in higher ranked GDP brackets result in a larger number of deaths and vaccines. With a p value of .0047 when testing the equality of deaths per capita for countries in the high and low GDP bracket, suggests there is a clear difference in deaths between the two levels. As from our depictions, there is a significant difference in total deaths and total deaths per capita when comparing countries of low GDP bracket to those of middle and high.
+
+Similarly with vaccinations, there is a clear distinction of the total vaccines distributed based on the GDP bracket. Countries that fall within the middle and high GDP brackets will receive and distribute more vaccines compared to those ranked with low GDP per capita. This is due to the country's wealth and status within the world, in which it prioritizes them to receive vaccines more steadily than a low GDP ranked country would.
+
+However, it is important to note that these rankings of countries make for very difficult comparison based on multiple factors that vary for each country. For example, countries vary in resources, like COVID-19 tests or access to testing locations, and hospitals. Additionally, how the country is governed could play a huge role in determining the outcomes the country faced against the pandemic.
+
+A large short-coming of this analysis is that the data provided will not always be correct. The data comes from multiple sources in a rushed time, making it difficult to accurately account for each observation. Alternatively, a country's government may provide false data on purpose to better their image to the world, for example China (although it is not proven, it is something to be considered). As mentioned before, the dataset is consistently being updated on a daily basis, so our analysis represents more of a general trend of our understandings. Because this data is still changing and adapting as the pandemic continues, these trends could very well change.
+
+For potential future analysis, we recommend focusing on one of the three components of the pandemic rather than all three components at once. There could be a much more in depth study of a particular component, such as vaccinations. For example, we could look at how the increased vaccine supply would supposedly lower positive test cases and death counts around the world. Predictions could be made using a linear regression based on the rates at which vaccines are being distributed on a daily basis to predict when a country could achieve herd immunity. 
